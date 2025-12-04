@@ -14,10 +14,9 @@
 # ･pyinstaller 6.17.0
 # ･auto-py-to-exe 2.48.1 (pyinstallerをGUI化する便利ライブラリ)
 #
-# ･Windows 10 64bit
-# ･NVIDIA GeForce GTX 1080
-# ･NVIDIA Driver 560.94
-# ･NVIDIA CUDA 12.6
+# 動作確認環境:
+# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce GTX 1080 - Driver 560.94 - CUDA 12.6
+# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
 #
 # exe化時のauto-py-to-exeの設定:
 # ･ひとつのファイルにまとめる (--onefile)
