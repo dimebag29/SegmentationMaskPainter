@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月4日 バージョン:v0.0
-# (Author:dimebag29 Creation date:December 4, 2025 Version:v0.0)
+# 作成者:dimebag29 作成日:2025年12月5日 バージョン:v0.0
+# (Author:dimebag29 Creation date:December 5, 2025 Version:v0.0)
 #
 # このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
@@ -21,7 +21,8 @@
 # ･exeアイコン設定 (--icon)
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
-# exe化時のバグ1:
+# ==============================================================================================================
+# exe化時のバグ 1:
 # 「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
 # 以下のサイトを参考にAppData\Local\Programs\Python\Python312\Lib\site-packages\torch\_numpy\_ufuncs.pyを編集する必要がある。
 # https://stackoverflow.com/questions/78375284/torch-error-nameerror-name-name-is-not-defined
@@ -40,7 +41,7 @@ for name in _unary:
     vars()[ufunc_name] = deco_binary_ufunc(ufunc)
 """
 #
-# exe化時のバグ2:
+# exe化時のバグ 2:
 #「NameError: name 'obj' is not defined」というエラーが出てexeが起動できない。
 # AppData\Local\Programs\Python\Python312\Lib\site-packages\scipy\stats\_distn_infrastructure.pyの369行目
 # 「del obj」を「#del obj」とコメントアウトする
