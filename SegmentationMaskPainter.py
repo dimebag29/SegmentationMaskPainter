@@ -10,22 +10,19 @@
 # https://creativecommons.org/publicdomain/zero/1.0/
 #
 # 開発環境:
+# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
 # ･python 3.12.0
 # ･pyinstaller 6.17.0
 # ･auto-py-to-exe 2.48.1 (pyinstallerをGUI化する便利ライブラリ)
-#
-# 動作確認環境:
-# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce GTX 1080 - Driver 560.94 - CUDA 12.6
-# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
 #
 # exe化時のauto-py-to-exeの設定:
 # ･ひとつのファイルにまとめる (--onefile)
 # ･ウィンドウベース (--windowed)
 # ･exeアイコン設定 (--icon)
-# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、実行時に要求するエラーが出る
+# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
-# PyTorchのexe化時のバグ:
-# 普通にexe化すると起動時に「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
+# exe化時のバグ1:
+# 「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
 # 以下のサイトを参考にAppData\Local\Programs\Python\Python312\Lib\site-packages\torch\_numpy\_ufuncs.pyを編集する必要がある。
 # https://stackoverflow.com/questions/78375284/torch-error-nameerror-name-name-is-not-defined
 # 編集するのは以下の2か所
@@ -42,6 +39,11 @@ for name in _unary:
     ufunc_name = name  # Définir une variable avec le nom de l'ufunc
     vars()[ufunc_name] = deco_binary_ufunc(ufunc)
 """
+#
+# exe化時のバグ2:
+#「NameError: name 'obj' is not defined」というエラーが出てexeが起動できない。
+# AppData\Local\Programs\Python\Python312\Lib\site-packages\scipy\stats\_distn_infrastructure.pyの369行目
+# 「del obj」を「#del obj」とコメントアウトする
 # ==============================================================================================================
 
 import os
@@ -53,8 +55,8 @@ import json
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import torch                                                                        # 2.9.0+cu126
-import numpy as np                                                                  # 2.3.5
+import torch                                                                        # 2.9.0+cu128 (対応アーキテクチャ: sm_70, sm_75, sm_80, sm_86, sm_90, sm_100, sm_120)
+import numpy as np                                                                  # 2.1.2
 from PIL import Image                                                               # 11.3.0
 from scipy.ndimage import binary_dilation                                           # 1.16.1
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation    # 4.57.3
@@ -173,6 +175,7 @@ def load_model(inf_short, inf_long):
             model_name,
             size={"shortest_edge": inf_short, "longest_edge": inf_long},
         )
+        # ユーザー指定: Mask2FormerForUniversalSegmentation を使用
         model = Mask2FormerForUniversalSegmentation.from_pretrained(model_name)
         model.eval()
 
@@ -202,18 +205,40 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
         original_image = Image.open(image_path).convert("RGBA")
         image_input = original_image.convert("RGB")
 
+        # 入力をモデルと同じデバイスに送る
+        device = model.device
         inputs = processor(images=image_input, return_tensors="pt")
-        if torch.cuda.is_available():
-            inputs = {k: v.to("cuda") for k, v in inputs.items()}
+        inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        with torch.no_grad():
-            outputs = model(**inputs)
+        # === 修正箇所: GPUカーネルエラー発生時のフォールバック処理 ===
+        try:
+            with torch.no_grad():
+                outputs = model(**inputs)
+        except RuntimeError as e:
+            # 特定のCUDAエラーをキャッチ
+            if "no kernel image is available" in str(e) or "CUDA" in str(e):
+                print(f"!!! GPUエラー検出: {e}")
+                print("!!! GPUがこのモデルに対応していない可能性があるため、CPUモードに切り替えて再試行します...")
+                
+                # モデルをCPUに移動
+                model.to("cpu")
+                # 入力データもCPUに移動
+                inputs = {k: v.to("cpu") for k, v in inputs.items()}
+                
+                # CPUで再実行
+                with torch.no_grad():
+                    outputs = model(**inputs)
+            else:
+                # それ以外のエラーはそのまま投げる
+                raise e
+        # =======================================================
 
         pred_map = processor.post_process_semantic_segmentation(
             outputs, target_sizes=[image_input.size[::-1]]
         )[0]
 
-        pred_np = pred_map.cpu().numpy() if torch.cuda.is_available() else pred_map.numpy()
+        # 結果をCPUに戻してnumpy化
+        pred_np = pred_map.cpu().numpy()
 
         # マスク画像を作成。RGBAの4チャンネルで初期化
         H, W = original_image.size[::-1]
@@ -233,14 +258,14 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
             if label_id not in id2label:
                 continue
 
-            name = id2label[label_id].lower()
+            name_lbl = id2label[label_id].lower()
 
-            if name not in TARGET_COLORS:
+            if name_lbl not in TARGET_COLORS:
                 continue
 
-            found_targets.append(name)
+            found_targets.append(name_lbl)
 
-            r, g, b, a, exp = TARGET_COLORS[name]
+            r, g, b, a, exp = TARGET_COLORS[name_lbl]
 
             mask = pred_np == label_id
 
@@ -263,14 +288,12 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
         
         # ターゲットとして検出された全てのピクセル(found_maskがTrueの場所)を
         # mask_arrの設定色(RGBA)で完全に置換する。
-        # ブレンド計算は行わず、値をそのまま代入します。
         final_np[found_mask] = mask_arr[found_mask]
         
         # 画像として保存
         merged_image = Image.fromarray(final_np, "RGBA")
         merged_image.save(save_path)
 
-        #print(f"完了: {filename} → {found_targets}") 何が検出されたかは気にしないので消した
         print(f"完了: {filename}")
         return True
 
