@@ -1,0 +1,35 @@
+■This software license
+
+CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
+Source code (https://github.com/dimebag29/SegmentationMaskPainter/tree/main)
+
+
+■Libraries used and their licenses
+
+･numpy (BSD 3)
+Copyright (c) 2005-2025, NumPy Developers
+https://github.com/numpy/numpy/blob/main/LICENSE.txt
+
+･Pillow (MIT)
+Copyright © 2010 by Jeffrey A. Clark and contributors
+https://github.com/python-pillow/Pillow/blob/main/LICENSE
+
+･scipy (BSD 3)
+Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers
+https://github.com/scipy/scipy/blob/main/LICENSE.txt
+
+･PyTorch (BSD 3)
+Copyright (c) 2016-     Facebook, Inc            (Adam Paszke)
+Copyright (c) 2014-     Facebook, Inc            (Soumith Chintala)
+Copyright (c) 2011-2014 Idiap Research Institute (Ronan Collobert)
+Copyright (c) 2012-2014 Deepmind Technologies    (Koray Kavukcuoglu)
+Copyright (c) 2011-2012 NEC Laboratories America (Koray Kavukcuoglu)
+Copyright (c) 2011-2013 NYU                      (Clement Farabet)
+Copyright (c) 2006-2010 NEC Laboratories America (Ronan Collobert, Leon Bottou, Iain Melvin, Jason Weston)
+Copyright (c) 2006      Idiap Research Institute (Samy Bengio)
+Copyright (c) 2001-2004 Idiap Research Institute (Ronan Collobert, Samy Bengio, Johnny Mariethoz)
+https://github.com/pytorch/pytorch/blob/main/LICENSE
+
+･Mask2Former (MIT)
+Copyright (c) 2022 Meta, Inc.
+https://github.com/facebookresearch/Mask2Former/blob/main/LICENSE
