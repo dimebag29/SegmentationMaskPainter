@@ -21,6 +21,11 @@
 # ･exeアイコン設定 (--icon)
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
+# ･exe動作確認環境:
+# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
+# ･Windows 11 64bit, AMD Ryzen 7 9800X3D, NVIDIA GeForce RTX 4080 - Driver 581.80 - CUDA 13.0
+# ･Windows 11 64bit, Intel Core i7 14700F, NVIDIA GeForce RTX 5070 Ti - Driver 581.80 - CUDA 13.0
+#
 # ==============================================================================================================
 # exe化時のバグ 1:
 # 「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
@@ -56,7 +61,7 @@ import json
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import torch                                                                        # 2.9.0+cu128 (対応アーキテクチャ: sm_70, sm_75, sm_80, sm_86, sm_90, sm_100, sm_120)
+import torch                                                                        # 2.9.0+cu128
 import numpy as np                                                                  # 2.1.2
 from PIL import Image                                                               # 11.3.0
 from scipy.ndimage import binary_dilation                                           # 1.16.1
