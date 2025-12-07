@@ -18,7 +18,8 @@
 # exe化時のauto-py-to-exeの設定:
 # ･ひとつのファイルにまとめる (--onefile)
 # ･ウィンドウベース (--windowed)
-# ･exeアイコン設定 (--icon)
+# ･exeアイコン設定 (--icon SegmentationMaskPainterIcon.ico)
+# ･追加ファイルでウィンドウタイトルバーアイコン追加 (--add-data SegmentationMaskPainterIcon.ico)
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
 # ･exe動作確認環境:
@@ -26,7 +27,7 @@
 # ･Windows 11 64bit, AMD Ryzen 7 9800X3D, NVIDIA GeForce RTX 4080 - Driver 581.80 - CUDA 13.0
 # ･Windows 11 64bit, Intel Core i7 14700F, NVIDIA GeForce RTX 5070 Ti - Driver 581.80 - CUDA 13.0
 #
-# ==============================================================================================================
+# --------------------------------------------------------------------------------------------------------------
 # exe化時のバグ 1:
 # 「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
 # 以下のサイトを参考にAppData\Local\Programs\Python\Python312\Lib\site-packages\torch\_numpy\_ufuncs.pyを編集する必要がある。
@@ -66,7 +67,6 @@ import numpy as np                                                              
 from PIL import Image                                                               # 11.3.0
 from scipy.ndimage import binary_dilation                                           # 1.16.1
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation    # 4.57.3
-
 
 
 # =========================================================
@@ -114,6 +114,7 @@ DEFAULT_TARGETS = [
     ["car", "0", "0", "0", "0", "5"],
     ["truck", "0", "0", "0", "0", "5"],
     ["bus", "0", "0", "0", "0", "5"],
+    ["van", "0", "0", "0", "0", "5"],
     ["sky", "67", "148", "240", "255", "1"]
 ]
 
@@ -173,7 +174,7 @@ class TextRedirector:
 #  セグメンテーション処理
 # =========================================================
 def load_model(inf_short, inf_long):
-    print("データセットを読み込んでいます")
+    print("データセットを読み込んでいます (数分かかる場合があります)")
 
     model_name = "facebook/mask2former-swin-large-ade-semantic"
     try:
@@ -216,7 +217,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
         inputs = processor(images=image_input, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # === 修正箇所: GPUカーネルエラー発生時のフォールバック処理 ===
+        # === GPUカーネルエラー発生時のフォールバック処理 ===
         try:
             with torch.no_grad():
                 outputs = model(**inputs)
@@ -224,7 +225,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
             # 特定のCUDAエラーをキャッチ
             if "no kernel image is available" in str(e) or "CUDA" in str(e):
                 print(f"!!! GPUエラー検出: {e}")
-                print("!!! GPUがこのモデルに対応していない可能性があるため、CPUモードに切り替えて再試行します...")
+                print("!!! GPUが対応していない可能性があるため、CPUモードに切り替えて再試行します...")
                 
                 # モデルをCPUに移動
                 model.to("cpu")
@@ -328,7 +329,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
         print("画像が見つかりません")
         return
 
-    print(f"推論解像度 shortest={inf_short}[px], longest={inf_long}[px]")
+    print(f"推論解像度 基準={inf_short}[px], 上限={inf_long}[px]")
 
     processor, model = load_model(inf_short, inf_long)
     if processor is None:
@@ -343,7 +344,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
     for i, f in enumerate(files):
         # 中断チェック
         if stop_event.is_set():
-            print(">>> ユーザー操作により処理を中断しました <<<\n")
+            print("\n>>> ユーザー操作により処理を中断しました <<<\n")
             break
 
         apply_segmentation(f, processor, model, output_folder, target_colors)
@@ -378,32 +379,32 @@ class SegGUI:
         self.out_var = tk.StringVar()
 
         ttk.Label(frm_io, text="Input Folder ").grid(row=0, column=0, sticky="w")
-        ttk.Entry(frm_io, textvariable=self.in_var, width=50).grid(row=0, column=1)
+        ttk.Entry(frm_io, textvariable=self.in_var, width=66).grid(row=0, column=1)
         ttk.Button(frm_io, text="参照", command=self.sel_in).grid(row=0, column=2)
 
         ttk.Label(frm_io, text="Output Folder ").grid(row=1, column=0, sticky="w")
-        ttk.Entry(frm_io, textvariable=self.out_var, width=50).grid(row=1, column=1)
+        ttk.Entry(frm_io, textvariable=self.out_var, width=66).grid(row=1, column=1)
         ttk.Button(frm_io, text="参照", command=self.sel_out).grid(row=1, column=2)
 
         # ==============================
         # 解像度
         # ==============================
-        frm_res = ttk.LabelFrame(root, text="推論解像度設定")
+        frm_res = ttk.LabelFrame(root, text="推論解像度設定 (数値を上げると検出精度向上＆くっきりするが、処理時間とVRAM･RAM消費量が増す)")
         frm_res.pack(fill="x", padx=10, pady=5)
 
         self.short_var = tk.IntVar(value=1024)
         self.long_var = tk.IntVar(value=2048)
 
-        ttk.Label(frm_res, text="Shortest [px] (初期値:1024) ").grid(row=0, column=0, sticky="w")
+        ttk.Label(frm_res, text="基準 [px] (初期値:1024) ").grid(row=0, column=0, sticky="w")
         ttk.Entry(frm_res, textvariable=self.short_var, width=10).grid(row=0, column=1)
 
-        ttk.Label(frm_res, text="Longest [px] (初期値:2048) ").grid(row=1, column=0, sticky="w")
+        ttk.Label(frm_res, text="上限 [px] (初期値:2048) ").grid(row=1, column=0, sticky="w")
         ttk.Entry(frm_res, textvariable=self.long_var, width=10).grid(row=1, column=1)
 
         # ==============================
         # Excel風ターゲットテーブル
         # ==============================
-        frm_tbl = ttk.LabelFrame(root, text="マスク設定")
+        frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
 
         # ---- class一覧ボタン用フレーム ----
@@ -467,7 +468,7 @@ class SegGUI:
         # 処理開始ボタン
         self.btn_run = ttk.Button(
             frm_exec, 
-            text="処理開始(既にファイルがあったらスキップ)", 
+            text="処理開始 (既にファイルがあったらスキップ)", 
             command=self.run
         )
         self.btn_run.pack(side="left", padx=10)
@@ -479,6 +480,17 @@ class SegGUI:
             command=self.stop_processing
         )
         self.btn_stop.pack(side="left", padx=10)
+
+        # ==============================
+        # GUIのアイコン設定
+        # ==============================
+        # exeに同梱したファイルのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
+        try:
+            TempFileDir = sys._MEIPASS
+        except Exception:
+            TempFileDir = os.path.abspath(".")
+        IconPath = os.path.join(TempFileDir, "SegmentationMaskPainterIcon.ico") # Iconのパス
+        root.iconbitmap(IconPath)
 
     # ---------------------------------------------------------
     def sel_in(self):
@@ -641,11 +653,11 @@ class SegGUI:
             short_val = self.short_var.get()
             long_val = self.long_var.get()
         except tk.TclError:
-            messagebox.showerror("エラー", "推論解像度設定の Shortest または Longest が空欄か、正しくない値です。")
+            messagebox.showerror("エラー", "推論解像度設定の 基準 または 上限 が空欄か、正しくない値です。")
             return
 
         if long_val <= short_val:
-            messagebox.showerror("エラー", "推論解像度設定の Longest は Shortest より大きい値にする必要があります。")
+            messagebox.showerror("エラー", "推論解像度設定の 上限 は 基準 より大きい値にする必要があります。")
             return
 
         # 3. 設定保存
