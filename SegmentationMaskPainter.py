@@ -20,7 +20,7 @@
 # ･ウィンドウベース (--windowed)
 # ･exeアイコン設定 (--icon SegmentationMaskPainterIcon.ico)
 # ･追加ファイルでウィンドウタイトルバーアイコン追加 (--add-data SegmentationMaskPainterIcon.ico)
-# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
+# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出るため
 #
 # ･exe動作確認環境:
 # ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
@@ -692,4 +692,5 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = SegGUI(root)
     root.mainloop()
+
 
