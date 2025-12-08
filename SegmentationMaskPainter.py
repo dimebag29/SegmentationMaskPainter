@@ -119,7 +119,7 @@ DEFAULT_TARGETS = [
 ]
 
 # =========================================================
-#  保存フォルダ（AppData\Local）
+#  保存フォルダ
 # =========================================================
 def get_appdata_dir():
     # 実行ファイルまたはスクリプトのあるディレクトリを使用
@@ -288,7 +288,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
             found_mask[mask] = True
 
         # -------------------------------------------------------------
-        # 強制的な塗りつぶしロジック
+        # 塗りつぶし
         # -------------------------------------------------------------
         # 元画像をnumpy配列化
         final_np = np.array(original_image, dtype=np.uint8)
@@ -407,11 +407,11 @@ class SegGUI:
         frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
 
-        # ---- class一覧ボタン用フレーム ----
+        # ---- 対象物一覧ボタン用フレーム ----
         frm_btn = tk.Frame(frm_tbl)
         frm_btn.pack(side="top", fill="x", padx=5, pady=2)
         
-        # class一覧ボタン (左側に配置)
+        # 対象物一覧ボタン
         btn_class_list = ttk.Button(frm_btn, text="対象物一覧", command=self.open_class_list)
         btn_class_list.pack(side="left")
 
@@ -504,7 +504,7 @@ class SegGUI:
             self.out_var.set(d)
 
     # ---------------------------------------------------------
-    # class一覧ウィンドウを表示
+    # 対象物一覧ウィンドウを表示
     # ---------------------------------------------------------
     def open_class_list(self):
         win = tk.Toplevel(self.root)
@@ -605,7 +605,7 @@ class SegGUI:
         save_settings(data)
 
     # ---------------------------------------------------------
-    # 設定ロード (修正: デフォルト値の適用)
+    # 設定ロード
     # ---------------------------------------------------------
     def load_saved_settings(self):
         data = load_settings()
@@ -663,7 +663,7 @@ class SegGUI:
         # 3. 設定保存
         self.save_current_settings()
 
-        # 4. テーブルデータの取得とチェック (ここでclass名のバリデーションも行われる)
+        # 4. テーブルデータの取得とチェック (ここで対象物名のバリデーションも行われる)
         target_colors = self.get_target_colors()
         if target_colors is None:
             return
@@ -692,3 +692,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = SegGUI(root)
     root.mainloop()
+
