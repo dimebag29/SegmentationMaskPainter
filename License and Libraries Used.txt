@@ -1,7 +1,7 @@
 ■This software license
 
 CC0 (https://creativecommons.org/publicdomain/zero/1.0/)
-Source code (https://github.com/dimebag29/SegmentationMaskPainter/tree/main)
+Source code (https://github.com/dimebag29/SegmentationMaskPainter)
 
 
 ■Libraries used and their licenses
