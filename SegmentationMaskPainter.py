@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月5日 バージョン:v0.0
-# (Author:dimebag29 Creation date:December 5, 2025 Version:v0.0)
+# 作成者:dimebag29 作成日:2025年12月9日 バージョン:v0.1
+# (Author:dimebag29 Creation date:December 9, 2025 Version:v0.1)
 #
 # このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
@@ -20,7 +20,7 @@
 # ･ウィンドウベース (--windowed)
 # ･exeアイコン設定 (--icon SegmentationMaskPainterIcon.ico)
 # ･追加ファイルでウィンドウタイトルバーアイコン追加 (--add-data SegmentationMaskPainterIcon.ico)
-# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出るため
+# ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
 # ･exe動作確認環境:
 # ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
@@ -29,7 +29,7 @@
 #
 # --------------------------------------------------------------------------------------------------------------
 # exe化時のバグ 1:
-# 「NameError: name 'name' is not defined」というエラーが出てexeが起動できない。
+# 「NameError: name 'name' is not defined」というエラーが出てexeが起動できないので、
 # 以下のサイトを参考にAppData\Local\Programs\Python\Python312\Lib\site-packages\torch\_numpy\_ufuncs.pyを編集する必要がある。
 # https://stackoverflow.com/questions/78375284/torch-error-nameerror-name-name-is-not-defined
 # 編集するのは以下の2か所
@@ -48,7 +48,7 @@ for name in _unary:
 """
 #
 # exe化時のバグ 2:
-#「NameError: name 'obj' is not defined」というエラーが出てexeが起動できない。
+#「NameError: name 'obj' is not defined」というエラーが出てexeが起動できないので、
 # AppData\Local\Programs\Python\Python312\Lib\site-packages\scipy\stats\_distn_infrastructure.pyの369行目
 # 「del obj」を「#del obj」とコメントアウトする
 # ==============================================================================================================
@@ -65,12 +65,12 @@ from tkinter import ttk, filedialog, messagebox
 import torch                                                                        # 2.9.0+cu128
 import numpy as np                                                                  # 2.1.2
 from PIL import Image                                                               # 11.3.0
-from scipy.ndimage import binary_dilation                                           # 1.16.1
+from scipy.ndimage import binary_dilation, binary_erosion                           # 1.16.1
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation    # 4.57.3
 
 
 # =========================================================
-#  クラス名データ（日本語, 英語）
+#  対象物名(クラス名)データ
 # =========================================================
 CLASS_DATA = [
     ("壁", "wall"), ("建物", "building"), ("空", "sky"), ("床", "floor"), ("木", "tree"),
@@ -119,7 +119,7 @@ DEFAULT_TARGETS = [
 ]
 
 # =========================================================
-#  保存フォルダ
+#  保存フォルダ（AppData\Local）
 # =========================================================
 def get_appdata_dir():
     # 実行ファイルまたはスクリプトのあるディレクトリを使用
@@ -276,10 +276,16 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
 
             mask = pred_np == label_id
 
+            # ▼ 変更点2: expが負の場合の縮小処理を追加
             if exp > 0:
-                # 拡張処理
+                # 拡張処理 (Dilation)
                 structure = np.ones((2 * exp + 1, 2 * exp + 1), dtype=bool)
                 mask = binary_dilation(mask, structure=structure)
+            elif exp < 0:
+                # 縮小処理 (Erosion)
+                val = abs(exp)
+                structure = np.ones((2 * val + 1, 2 * val + 1), dtype=bool)
+                mask = binary_erosion(mask, structure=structure)
 
             # マスクがTrueのピクセルにTARGET_COLORSを設定
             mask_arr[mask] = (r, g, b, a)
@@ -288,7 +294,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
             found_mask[mask] = True
 
         # -------------------------------------------------------------
-        # 塗りつぶし
+        # 強制的な塗りつぶしロジック
         # -------------------------------------------------------------
         # 元画像をnumpy配列化
         final_np = np.array(original_image, dtype=np.uint8)
@@ -364,7 +370,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.0")
+        root.title("SegmentationMaskPainter v0.1")
         
         # 中断制御用のイベント
         self.stop_event = threading.Event()
@@ -407,11 +413,11 @@ class SegGUI:
         frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
 
-        # ---- 対象物一覧ボタン用フレーム ----
+        # ---- class一覧ボタン用フレーム ----
         frm_btn = tk.Frame(frm_tbl)
         frm_btn.pack(side="top", fill="x", padx=5, pady=2)
         
-        # 対象物一覧ボタン
+        # class一覧ボタン (左側に配置)
         btn_class_list = ttk.Button(frm_btn, text="対象物一覧", command=self.open_class_list)
         btn_class_list.pack(side="left")
 
@@ -504,7 +510,7 @@ class SegGUI:
             self.out_var.set(d)
 
     # ---------------------------------------------------------
-    # 対象物一覧ウィンドウを表示
+    # 対象物(class)一覧ウィンドウを表示
     # ---------------------------------------------------------
     def open_class_list(self):
         win = tk.Toplevel(self.root)
@@ -605,7 +611,7 @@ class SegGUI:
         save_settings(data)
 
     # ---------------------------------------------------------
-    # 設定ロード
+    # 設定ロード (修正: デフォルト値の適用)
     # ---------------------------------------------------------
     def load_saved_settings(self):
         data = load_settings()
@@ -663,7 +669,7 @@ class SegGUI:
         # 3. 設定保存
         self.save_current_settings()
 
-        # 4. テーブルデータの取得とチェック (ここで対象物名のバリデーションも行われる)
+        # 4. テーブルデータの取得とチェック (ここでclass名のバリデーションも行われる)
         target_colors = self.get_target_colors()
         if target_colors is None:
             return
@@ -679,7 +685,7 @@ class SegGUI:
                 target_colors,
                 short_val,
                 long_val,
-                self.stop_event,  # イベントを渡す
+                self.stop_event,
             ),
             daemon=True,
         ).start()
@@ -692,5 +698,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = SegGUI(root)
     root.mainloop()
-
-
