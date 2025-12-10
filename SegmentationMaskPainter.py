@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月9日 バージョン:v0.1
-# (Author:dimebag29 Creation date:December 9, 2025 Version:v0.1)
+# 作成者:dimebag29 作成日:2025年12月10日 バージョン:v0.2
+# (Author:dimebag29 Creation date:December 10, 2025 Version:v0.2)
 #
 # このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
@@ -20,6 +20,9 @@
 # ･ウィンドウベース (--windowed)
 # ･exeアイコン設定 (--icon SegmentationMaskPainterIcon.ico)
 # ･追加ファイルでウィンドウタイトルバーアイコン追加 (--add-data SegmentationMaskPainterIcon.ico)
+# ･追加フォルダでデータセットを追加 (--add-data mask2former-swin-large-ade-semantic\)
+#    mask2former-swin-large-ade-semanticフォルダにはpreprocessor_config.json, config.json, pytorch_model.binの3つのファイルを 
+#    https://huggingface.co/facebook/mask2former-swin-large-ade-semantic からダウンロードして入れておく
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
 # ･exe動作確認環境:
@@ -174,9 +177,19 @@ class TextRedirector:
 #  セグメンテーション処理
 # =========================================================
 def load_model(inf_short, inf_long):
-    print("データセットを読み込んでいます (数分かかる場合があります)")
+    print("データセットを読み込んでいます")
 
-    model_name = "facebook/mask2former-swin-large-ade-semantic"
+    # exeのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
+    try:
+        TempFileDir = sys._MEIPASS
+    except Exception:
+        TempFileDir = os.path.abspath(".")
+    model_name = os.path.join(TempFileDir, "mask2former-swin-large-ade-semantic")   # データセット(preprocessor_config.json, config.json, pytorch_model.bin)が入ったフォルダmask2former-swin-large-ade-semanticのパスを取得
+
+    # データセットがなかったらダウンロードするようにする
+    if False == os.path.exists(model_name + "\preprocessor_config.json") or False == os.path.exists(model_name + "\config.json") or False == os.path.exists(model_name + "\pytorch_model.bin"):
+        model_name = "facebook/mask2former-swin-large-ade-semantic"
+    
     try:
         processor = AutoImageProcessor.from_pretrained(
             model_name,
@@ -370,7 +383,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.1")
+        root.title("SegmentationMaskPainter v0.2")
         
         # 中断制御用のイベント
         self.stop_event = threading.Event()
@@ -490,7 +503,7 @@ class SegGUI:
         # ==============================
         # GUIのアイコン設定
         # ==============================
-        # exeに同梱したファイルのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
+        # exeのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
         try:
             TempFileDir = sys._MEIPASS
         except Exception:
