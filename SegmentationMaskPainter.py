@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月10日 バージョン:v0.2
-# (Author:dimebag29 Creation date:December 10, 2025 Version:v0.2)
+# 作成者:dimebag29 作成日:2025年12月11日 バージョン:v0.3
+# (Author:dimebag29 Creation date:December 11, 2025 Version:v0.3)
 #
 # このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
@@ -21,8 +21,8 @@
 # ･exeアイコン設定 (--icon SegmentationMaskPainterIcon.ico)
 # ･追加ファイルでウィンドウタイトルバーアイコン追加 (--add-data SegmentationMaskPainterIcon.ico)
 # ･追加フォルダでデータセットを追加 (--add-data mask2former-swin-large-ade-semantic\)
-#    mask2former-swin-large-ade-semanticフォルダにはpreprocessor_config.json, config.json, pytorch_model.binの3つのファイルを 
-#    https://huggingface.co/facebook/mask2former-swin-large-ade-semantic からダウンロードして入れておく
+#   mask2former-swin-large-ade-semanticフォルダにはpreprocessor_config.json, config.json, pytorch_model.binの3つのファイルを 
+#   https://huggingface.co/facebook/mask2former-swin-large-ade-semantic からダウンロードして入れておく
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
 # ･exe動作確認環境:
@@ -122,7 +122,7 @@ DEFAULT_TARGETS = [
 ]
 
 # =========================================================
-#  保存フォルダ（AppData\Local）
+#  保存フォルダ
 # =========================================================
 def get_appdata_dir():
     # 実行ファイルまたはスクリプトのあるディレクトリを使用
@@ -179,7 +179,7 @@ class TextRedirector:
 def load_model(inf_short, inf_long):
     print("データセットを読み込んでいます")
 
-    # exeのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
+    # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
     try:
         TempFileDir = sys._MEIPASS
     except Exception:
@@ -187,7 +187,7 @@ def load_model(inf_short, inf_long):
     model_name = os.path.join(TempFileDir, "mask2former-swin-large-ade-semantic")   # データセット(preprocessor_config.json, config.json, pytorch_model.bin)が入ったフォルダmask2former-swin-large-ade-semanticのパスを取得
 
     # データセットがなかったらダウンロードするようにする
-    if False == os.path.exists(model_name + "\preprocessor_config.json") or False == os.path.exists(model_name + "\config.json") or False == os.path.exists(model_name + "\pytorch_model.bin"):
+    if False == os.path.exists(model_name + r"\preprocessor_config.json") or False == os.path.exists(model_name + r"\config.json") or False == os.path.exists(model_name + r"\pytorch_model.bin"):
         model_name = "facebook/mask2former-swin-large-ade-semantic"
     
     try:
@@ -195,7 +195,7 @@ def load_model(inf_short, inf_long):
             model_name,
             size={"shortest_edge": inf_short, "longest_edge": inf_long},
         )
-        # ユーザー指定: Mask2FormerForUniversalSegmentation を使用
+        
         model = Mask2FormerForUniversalSegmentation.from_pretrained(model_name)
         model.eval()
 
@@ -212,11 +212,14 @@ def load_model(inf_short, inf_long):
         return None, None
 
 
-def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
+def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, save_format):
     try:
         filename = os.path.basename(image_path)
         name, _ = os.path.splitext(filename)
-        save_path = os.path.join(output_dir, name + ".png")
+
+        # 保存形式に応じて拡張子を決定
+        ext = ".png" if save_format == "png" else ".jpg"
+        save_path = os.path.join(output_dir, name + ext)
 
         if os.path.exists(save_path):
             print(f"既にファイルが存在したのでスキップ: {filename}")
@@ -289,13 +292,13 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
 
             mask = pred_np == label_id
 
-            # ▼ 変更点2: expが負の場合の縮小処理を追加
+            # マスク拡張処理
             if exp > 0:
-                # 拡張処理 (Dilation)
+                # 拡張処理
                 structure = np.ones((2 * exp + 1, 2 * exp + 1), dtype=bool)
                 mask = binary_dilation(mask, structure=structure)
             elif exp < 0:
-                # 縮小処理 (Erosion)
+                # 縮小処理
                 val = abs(exp)
                 structure = np.ones((2 * val + 1, 2 * val + 1), dtype=bool)
                 mask = binary_erosion(mask, structure=structure)
@@ -307,18 +310,28 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
             found_mask[mask] = True
 
         # -------------------------------------------------------------
-        # 強制的な塗りつぶしロジック
+        # 塗りつぶし処理
         # -------------------------------------------------------------
         # 元画像をnumpy配列化
         final_np = np.array(original_image, dtype=np.uint8)
         
-        # ターゲットとして検出された全てのピクセル(found_maskがTrueの場所)を
-        # mask_arrの設定色(RGBA)で完全に置換する。
+        # ターゲットとして検出された全てのピクセル(found_maskがTrueの場所)をmask_arrの設定色(RGBA)で置換する。
         final_np[found_mask] = mask_arr[found_mask]
+
+        # Exifデータのコピー
+        exif_data = original_image.getexif()
         
-        # 画像として保存
+        # 画像として保存するための準備
         merged_image = Image.fromarray(final_np, "RGBA")
-        merged_image.save(save_path)
+
+        # 保存形式による分岐
+        if save_format == "jpg":
+            # JPGは透明度(RGBA)を扱えないためRGBに変換
+            merged_image = merged_image.convert("RGB")
+            merged_image.save(save_path, quality=95, exif=exif_data)    # qualityは95を超える値は避けるように公式が推奨 https://pillow.readthedocs.io/en/latest/handbook/image-file-formats.html#jpeg
+        else:
+            # PNG
+            merged_image.save(save_path, exif=exif_data)
 
         print(f"完了: {filename}")
         return True
@@ -331,9 +344,9 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS):
 
 
 # =========================================================
-#  全画像処理 (中断機能付き)
+#  全画像処理
 # =========================================================
-def start_processing(input_folder, output_folder, target_colors, inf_short, inf_long, stop_event):
+def start_processing(input_folder, output_folder, target_colors, inf_short, inf_long, stop_event, save_format):
     if not os.path.exists(input_folder):
         print("入力フォルダが存在しません")
         return
@@ -366,7 +379,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
             print("\n>>> ユーザー操作により処理を中断しました <<<\n")
             break
 
-        apply_segmentation(f, processor, model, output_folder, target_colors)
+        apply_segmentation(f, processor, model, output_folder, target_colors, save_format)
 
         elapsed = time.time() - start
         if i + 1 > 0:
@@ -383,7 +396,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.2")
+        root.title("SegmentationMaskPainter v0.3")
         
         # 中断制御用のイベント
         self.stop_event = threading.Event()
@@ -426,11 +439,11 @@ class SegGUI:
         frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
 
-        # ---- class一覧ボタン用フレーム ----
+        # 対象物(class)一覧ボタン用フレーム
         frm_btn = tk.Frame(frm_tbl)
         frm_btn.pack(side="top", fill="x", padx=5, pady=2)
         
-        # class一覧ボタン (左側に配置)
+        # 対象物(class)一覧ボタン (左側に配置)
         btn_class_list = ttk.Button(frm_btn, text="対象物一覧", command=self.open_class_list)
         btn_class_list.pack(side="left")
 
@@ -476,7 +489,23 @@ class SegGUI:
         # ==============================
         # 設定ロード (初期値設定含む)
         # ==============================
+        # 保存形式用変数の定義
+        self.format_var = tk.StringVar(value="png")
         self.load_saved_settings()
+
+        # ==============================
+        # 保存形式選択ラジオボタン
+        # ==============================
+        frm_fmt = tk.Frame(root)
+        frm_fmt.pack(pady=5)
+
+        ttk.Label(frm_fmt, text="保存形式: ").pack(side="left")
+        
+        rad_png = ttk.Radiobutton(frm_fmt, text="PNG", variable=self.format_var, value="png")
+        rad_png.pack(side="left", padx=10)
+        
+        rad_jpg = ttk.Radiobutton(frm_fmt, text="JPG ※マスク設定のA(透明)は無効になります", variable=self.format_var, value="jpg")
+        rad_jpg.pack(side="left", padx=10)
 
         # ==============================
         # 実行ボタンエリア
@@ -503,7 +532,7 @@ class SegGUI:
         # ==============================
         # GUIのアイコン設定
         # ==============================
-        # exeのパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
+        # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
         try:
             TempFileDir = sys._MEIPASS
         except Exception:
@@ -570,7 +599,7 @@ class SegGUI:
         win.protocol("WM_DELETE_WINDOW", _on_close)
 
     # ---------------------------------------------------------
-    # TARGET_COLORS を dict 化 (ここにバリデーションを追加)
+    # TARGET_COLORS を dict 化
     # ---------------------------------------------------------
     def get_target_colors(self):
         # バリデーション用にCLASS_DATAの英語名（第2要素）のセットを作成
@@ -584,7 +613,6 @@ class SegGUI:
             
             name = vals[0]
             
-            # --- 追加したバリデーション処理 ---
             if name not in valid_class_names:
                 messagebox.showerror(
                     "エラー", 
@@ -592,7 +620,6 @@ class SegGUI:
                     "対象物一覧 に存在する名前を正確に入力してください。"
                 )
                 return None
-            # --------------------------------
 
             try:
                 r = int(vals[1])
@@ -617,6 +644,7 @@ class SegGUI:
             "output": self.out_var.get(),
             "short": self.short_var.get(),
             "long": self.long_var.get(),
+            "format": self.format_var.get(),
             "table": [
                 [e.get() for e in row] for row in self.cells
             ],
@@ -624,7 +652,7 @@ class SegGUI:
         save_settings(data)
 
     # ---------------------------------------------------------
-    # 設定ロード (修正: デフォルト値の適用)
+    # 設定ロード
     # ---------------------------------------------------------
     def load_saved_settings(self):
         data = load_settings()
@@ -638,6 +666,7 @@ class SegGUI:
             self.out_var.set(data.get("output", ""))
             self.short_var.set(data.get("short", 1024))
             self.long_var.set(data.get("long", 2048))
+            self.format_var.set(data.get("format", "png"))
             table_data = data.get("table", [])
 
         # テーブルデータの流し込み
@@ -682,7 +711,7 @@ class SegGUI:
         # 3. 設定保存
         self.save_current_settings()
 
-        # 4. テーブルデータの取得とチェック (ここでclass名のバリデーションも行われる)
+        # 4. テーブルデータの取得とチェック (ここで対象物名(class名)のバリデーションも行われる)
         target_colors = self.get_target_colors()
         if target_colors is None:
             return
@@ -699,6 +728,7 @@ class SegGUI:
                 short_val,
                 long_val,
                 self.stop_event,
+                self.format_var.get(),
             ),
             daemon=True,
         ).start()
