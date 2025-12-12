@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月11日 バージョン:v0.3
-# (Author:dimebag29 Creation date:December 11, 2025 Version:v0.3)
+# 作成者:dimebag29 作成日:2025年12月12日 バージョン:v0.4
+# (Author:dimebag29 Creation date:December 12, 2025 Version:v0.4)
 #
 # このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
@@ -56,6 +56,9 @@ for name in _unary:
 # 「del obj」を「#del obj」とコメントアウトする
 # ==============================================================================================================
 
+# =========================================================
+#  インポート部分の変更
+# =========================================================
 import os
 import sys
 import time
@@ -65,10 +68,12 @@ import json
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from contextlib import nullcontext
+import winsound
 import torch                                                                        # 2.9.0+cu128
 import numpy as np                                                                  # 2.1.2
 from PIL import Image                                                               # 11.3.0
-from scipy.ndimage import binary_dilation, binary_erosion                           # 1.16.1
+import cv2                                                                          # 4.12.0.88
 from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation    # 4.57.3
 
 
@@ -172,22 +177,20 @@ class TextRedirector:
     def flush(self):
         pass
 
-
 # =========================================================
 #  セグメンテーション処理
 # =========================================================
 def load_model(inf_short, inf_long):
     print("データセットを読み込んでいます")
 
-    # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
     try:
         TempFileDir = sys._MEIPASS
     except Exception:
         TempFileDir = os.path.abspath(".")
-    model_name = os.path.join(TempFileDir, "mask2former-swin-large-ade-semantic")   # データセット(preprocessor_config.json, config.json, pytorch_model.bin)が入ったフォルダmask2former-swin-large-ade-semanticのパスを取得
+    
+    model_name = os.path.join(TempFileDir, "mask2former-swin-large-ade-semantic")
 
-    # データセットがなかったらダウンロードするようにする
-    if False == os.path.exists(model_name + r"\preprocessor_config.json") or False == os.path.exists(model_name + r"\config.json") or False == os.path.exists(model_name + r"\pytorch_model.bin"):
+    if False == os.path.exists(model_name + r"\preprocessor_config.json"):
         model_name = "facebook/mask2former-swin-large-ade-semantic"
     
     try:
@@ -200,7 +203,8 @@ def load_model(inf_short, inf_long):
         model.eval()
 
         if torch.cuda.is_available():
-            model.to("cuda")
+            # モデル自体をFP16（半精度）でGPUに転送。RTX 30/40/50シリーズではこれで大幅にメモリ削減＆高速化します
+            model.to("cuda", dtype=torch.float16)
             print("CUDAが利用可能。GPUを使用します")
         else:
             print("CUDAが利用不可。CPUを使用します")
@@ -216,8 +220,6 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
     try:
         filename = os.path.basename(image_path)
         name, _ = os.path.splitext(filename)
-
-        # 保存形式に応じて拡張子を決定
         ext = ".png" if save_format == "png" else ".jpg"
         save_path = os.path.join(output_dir, name + ext)
 
@@ -228,109 +230,85 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
         original_image = Image.open(image_path).convert("RGBA")
         image_input = original_image.convert("RGB")
 
-        # 入力をモデルと同じデバイスに送る
-        device = model.device
+        # === 前処理 ===
         inputs = processor(images=image_input, return_tensors="pt")
+        
+        # GPUへ転送
+        device = model.device
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # === GPUカーネルエラー発生時のフォールバック処理 ===
+        # === 推論処理 ===
         try:
-            with torch.no_grad():
-                outputs = model(**inputs)
+            with torch.inference_mode():
+                # CUDAの場合のみautocast(FP16)を有効化、それ以外は何もしない(nullcontext)
+                with torch.autocast(device_type="cuda", dtype=torch.float16) if device.type == "cuda" else nullcontext():
+                    outputs = model(**inputs)
+        
         except RuntimeError as e:
-            # 特定のCUDAエラーをキャッチ
             if "no kernel image is available" in str(e) or "CUDA" in str(e):
                 print(f"!!! GPUエラー検出: {e}")
-                print("!!! GPUが対応していない可能性があるため、CPUモードに切り替えて再試行します...")
-                
-                # モデルをCPUに移動
-                model.to("cpu")
-                # 入力データもCPUに移動
+                print("!!! CPUモードに切り替えて再試行します...")
+                model.to("cpu", dtype=torch.float32) # CPUはfloat32に戻す
                 inputs = {k: v.to("cpu") for k, v in inputs.items()}
-                
-                # CPUで再実行
                 with torch.no_grad():
                     outputs = model(**inputs)
             else:
-                # それ以外のエラーはそのまま投げる
                 raise e
-        # =======================================================
 
+        # === 後処理 ===
         pred_map = processor.post_process_semantic_segmentation(
             outputs, target_sizes=[image_input.size[::-1]]
         )[0]
 
-        # 結果をCPUに戻してnumpy化
         pred_np = pred_map.cpu().numpy()
 
-        # マスク画像を作成。RGBAの4チャンネルで初期化
         H, W = original_image.size[::-1]
-        
-        # ターゲット色のための配列
         mask_arr = np.zeros((H, W, 4), dtype=np.uint8)
-        
-        # どのピクセルがターゲットとして検出されたかを記録するマスク (Trueなら上書き対象)
         found_mask = np.zeros((H, W), dtype=bool)
 
         id2label = getattr(model.config, "id2label", {i: f"class_{i}" for i in range(150)})
-
         unique_labels = np.unique(pred_np)
-        found_targets = []
 
+        # === マスク処理 ===
         for label_id in unique_labels:
             if label_id not in id2label:
                 continue
 
             name_lbl = id2label[label_id].lower()
-
             if name_lbl not in TARGET_COLORS:
                 continue
 
-            found_targets.append(name_lbl)
-
             r, g, b, a, exp = TARGET_COLORS[name_lbl]
 
-            mask = pred_np == label_id
+            mask = (pred_np == label_id)
 
-            # マスク拡張処理
-            if exp > 0:
-                # 拡張処理
-                structure = np.ones((2 * exp + 1, 2 * exp + 1), dtype=bool)
-                mask = binary_dilation(mask, structure=structure)
-            elif exp < 0:
-                # 縮小処理
-                val = abs(exp)
-                structure = np.ones((2 * val + 1, 2 * val + 1), dtype=bool)
-                mask = binary_erosion(mask, structure=structure)
+            # マスク拡張・縮小処理
+            if exp != 0:
+                mask_uint8 = mask.astype(np.uint8) * 255
+                kernel_size = 2 * abs(exp) + 1
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
 
-            # マスクがTrueのピクセルにTARGET_COLORSを設定
+                if exp > 0:
+                    mask_uint8 = cv2.dilate(mask_uint8, kernel, iterations=1)
+                else:
+                    mask_uint8 = cv2.erode(mask_uint8, kernel, iterations=1)
+                
+                mask = mask_uint8 > 127
+
             mask_arr[mask] = (r, g, b, a)
-            
-            # このピクセルは上書き対象としてマークする
             found_mask[mask] = True
 
-        # -------------------------------------------------------------
-        # 塗りつぶし処理
-        # -------------------------------------------------------------
-        # 元画像をnumpy配列化
+        # === 画像生成と保存 ===
         final_np = np.array(original_image, dtype=np.uint8)
-        
-        # ターゲットとして検出された全てのピクセル(found_maskがTrueの場所)をmask_arrの設定色(RGBA)で置換する。
         final_np[found_mask] = mask_arr[found_mask]
 
-        # Exifデータのコピー
         exif_data = original_image.getexif()
-        
-        # 画像として保存するための準備
         merged_image = Image.fromarray(final_np, "RGBA")
 
-        # 保存形式による分岐
         if save_format == "jpg":
-            # JPGは透明度(RGBA)を扱えないためRGBに変換
             merged_image = merged_image.convert("RGB")
-            merged_image.save(save_path, quality=95, exif=exif_data)    # qualityは95を超える値は避けるように公式が推奨 https://pillow.readthedocs.io/en/latest/handbook/image-file-formats.html#jpeg
+            merged_image.save(save_path, quality=95, exif=exif_data)
         else:
-            # PNG
             merged_image.save(save_path, exif=exif_data)
 
         print(f"完了: {filename}")
@@ -388,6 +366,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 
     if not stop_event.is_set():
         print("\n■■■■■ 全処理完了!! ■■■■■\n")
+        winsound.PlaySound("Notification.Looping.Alarm4", winsound.SND_ALIAS)   # 終了音を鳴らす
 
 
 # =========================================================
@@ -396,7 +375,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.3")
+        root.title("SegmentationMaskPainter v0.4")
         
         # 中断制御用のイベント
         self.stop_event = threading.Event()
