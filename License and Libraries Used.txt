@@ -18,6 +18,10 @@ https://github.com/python-pillow/Pillow/blob/main/LICENSE
 Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers
 https://github.com/scipy/scipy/blob/main/LICENSE.txt
 
+･opencv-python (MIT)
+Copyright (c) Olli-Pekka Heinisuo
+https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt
+
 ･PyTorch (BSD 3)
 Copyright (c) 2016-     Facebook, Inc            (Adam Paszke)
 Copyright (c) 2014-     Facebook, Inc            (Soumith Chintala)
