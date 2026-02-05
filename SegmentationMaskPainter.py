@@ -57,7 +57,7 @@ for name in _unary:
 # ==============================================================================================================
 
 # =========================================================
-#  インポート部分の変更
+#  ライブラリ
 # =========================================================
 import os
 import sys
@@ -203,7 +203,7 @@ def load_model(inf_short, inf_long):
         model.eval()
 
         if torch.cuda.is_available():
-            # モデル自体をFP16（半精度）でGPUに転送。RTX 30/40/50シリーズではこれで大幅にメモリ削減＆高速化します
+            # モデル自体をFP16（半精度）でGPUに転送。RTX 30/40/50シリーズではこれで大幅にメモリ削減＆高速化
             model.to("cuda", dtype=torch.float16)
             print("CUDAが利用可能。GPUを使用します")
         else:
@@ -413,7 +413,7 @@ class SegGUI:
         ttk.Entry(frm_res, textvariable=self.long_var, width=10).grid(row=1, column=1)
 
         # ==============================
-        # Excel風ターゲットテーブル
+        # マスク設定 入力欄
         # ==============================
         frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
@@ -720,3 +720,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = SegGUI(root)
     root.mainloop()
+
