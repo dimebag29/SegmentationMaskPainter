@@ -1,9 +1,9 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2025年12月12日 バージョン:v0.4
-# (Author:dimebag29 Creation date:December 12, 2025 Version:v0.4)
+# 作成者:dimebag29 作成日:2026年5月1日 バージョン:v0.5
+# (Author:dimebag29 Creation date:May 1, 2026 Version:v0.5)
 #
-# このプログラムは大部分をAI (Gemini 3.0 Pro, ChatGPT 5.1)を利用して作成されました。
-# (This program was created largely using AI (Gemini 3.0 Pro, ChatGPT 5.1). )
+# このプログラムは大部分をAI (Gemini 3.1 Pro, ChatGPT 5.1)を利用して作成されました。
+# (This program was created largely using AI (Gemini 3.1 Pro, ChatGPT 5.1). )
 #
 # このプログラムのライセンスはCC0 (クリエイティブ・コモンズ・ゼロ)です。いかなる権利も保有しません。
 # (This program is licensed under CC0 (Creative Commons Zero). No rights reserved.)
@@ -26,6 +26,7 @@
 # ･高度な設定でscipyを同梱 (--collect-all scipy) ※exe化後、処理実行時に要求するエラーが出る
 #
 # ･exe動作確認環境:
+# ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 2080 Ti - Driver 591.86 - CUDA 13.1
 # ･Windows 10 64bit, AMD Ryzen 7 5700X, NVIDIA GeForce RTX 3090 - Driver 571.96 - CUDA 12.8
 # ･Windows 11 64bit, AMD Ryzen 7 9800X3D, NVIDIA GeForce RTX 4080 - Driver 581.80 - CUDA 13.0
 # ･Windows 11 64bit, Intel Core i7 14700F, NVIDIA GeForce RTX 5070 Ti - Driver 581.80 - CUDA 13.0
@@ -70,6 +71,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from contextlib import nullcontext
 import winsound
+
 import torch                                                                        # 2.9.0+cu128
 import numpy as np                                                                  # 2.1.2
 from PIL import Image                                                               # 11.3.0
@@ -183,6 +185,7 @@ class TextRedirector:
 def load_model(inf_short, inf_long):
     print("データセットを読み込んでいます")
 
+    # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
     try:
         TempFileDir = sys._MEIPASS
     except Exception:
@@ -203,7 +206,7 @@ def load_model(inf_short, inf_long):
         model.eval()
 
         if torch.cuda.is_available():
-            # モデル自体をFP16（半精度）でGPUに転送。RTX 30/40/50シリーズではこれで大幅にメモリ削減＆高速化
+            # モデル自体をFP16（半精度）でGPUに転送。RTX 20/30/40/50シリーズではこれで大幅にメモリ削減＆高速化
             model.to("cuda", dtype=torch.float16)
             print("CUDAが利用可能。GPUを使用します")
         else:
@@ -216,7 +219,7 @@ def load_model(inf_short, inf_long):
         return None, None
 
 
-def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, save_format):
+def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, save_format, mask_mode):
     try:
         filename = os.path.basename(image_path)
         name, _ = os.path.splitext(filename)
@@ -299,8 +302,14 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
             found_mask[mask] = True
 
         # === 画像生成と保存 ===
-        final_np = np.array(original_image, dtype=np.uint8)
-        final_np[found_mask] = mask_arr[found_mask]
+        if mask_mode:
+            # マスク画像生成モード: 全体を R,G,B,A=255,255,255,255 で初期化し、対象物を 0,0,0,255 で塗る
+            final_np = np.full((H, W, 4), 255, dtype=np.uint8)
+            final_np[found_mask] = (0, 0, 0, 255)
+        else:
+            # 通常モード: 元画像をベースに色を塗る
+            final_np = np.array(original_image, dtype=np.uint8)
+            final_np[found_mask] = mask_arr[found_mask]
 
         exif_data = original_image.getexif()
         merged_image = Image.fromarray(final_np, "RGBA")
@@ -324,7 +333,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
 # =========================================================
 #  全画像処理
 # =========================================================
-def start_processing(input_folder, output_folder, target_colors, inf_short, inf_long, stop_event, save_format):
+def start_processing(input_folder, output_folder, target_colors, inf_short, inf_long, stop_event, save_format, mask_mode):
     if not os.path.exists(input_folder):
         print("入力フォルダが存在しません")
         return
@@ -357,7 +366,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
             print("\n>>> ユーザー操作により処理を中断しました <<<\n")
             break
 
-        apply_segmentation(f, processor, model, output_folder, target_colors, save_format)
+        apply_segmentation(f, processor, model, output_folder, target_colors, save_format, mask_mode)
 
         elapsed = time.time() - start
         if i + 1 > 0:
@@ -375,7 +384,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.4")
+        root.title("SegmentationMaskPainter v0.5")
         
         # 中断制御用のイベント
         self.stop_event = threading.Event()
@@ -466,11 +475,28 @@ class SegGUI:
         sys.stdout = TextRedirector(self.log_text)
 
         # ==============================
+        # 設定用変数の定義
+        # ==============================
+        self.format_var = tk.StringVar(value="png")
+        self.mask_mode_var = tk.BooleanVar(value=False)
+
+        # ==============================
         # 設定ロード (初期値設定含む)
         # ==============================
-        # 保存形式用変数の定義
-        self.format_var = tk.StringVar(value="png")
         self.load_saved_settings()
+
+        # ==============================
+        # マスク画像生成用チェックボタン
+        # ==============================
+        frm_mask = tk.Frame(root)
+        frm_mask.pack(pady=5)
+
+        chk_mask = ttk.Checkbutton(
+            frm_mask,
+            text="白黒のマスク画像として生成 (マスク設定のRGBAは無視されます)",
+            variable=self.mask_mode_var
+        )
+        chk_mask.pack(side="left", padx=10)
 
         # ==============================
         # 保存形式選択ラジオボタン
@@ -517,7 +543,9 @@ class SegGUI:
         except Exception:
             TempFileDir = os.path.abspath(".")
         IconPath = os.path.join(TempFileDir, "SegmentationMaskPainterIcon.ico") # Iconのパス
-        root.iconbitmap(IconPath)
+        
+        if os.path.exists(IconPath):
+            root.iconbitmap(IconPath)
 
     # ---------------------------------------------------------
     def sel_in(self):
@@ -624,6 +652,7 @@ class SegGUI:
             "short": self.short_var.get(),
             "long": self.long_var.get(),
             "format": self.format_var.get(),
+            "mask_mode": self.mask_mode_var.get(),
             "table": [
                 [e.get() for e in row] for row in self.cells
             ],
@@ -646,6 +675,7 @@ class SegGUI:
             self.short_var.set(data.get("short", 1024))
             self.long_var.set(data.get("long", 2048))
             self.format_var.set(data.get("format", "png"))
+            self.mask_mode_var.set(data.get("mask_mode", False))
             table_data = data.get("table", [])
 
         # テーブルデータの流し込み
@@ -708,6 +738,7 @@ class SegGUI:
                 long_val,
                 self.stop_event,
                 self.format_var.get(),
+                self.mask_mode_var.get(),
             ),
             daemon=True,
         ).start()
@@ -720,4 +751,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = SegGUI(root)
     root.mainloop()
-
