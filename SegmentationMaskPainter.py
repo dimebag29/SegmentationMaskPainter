@@ -1,6 +1,6 @@
 # ==============================================================================================================
-# 作成者:dimebag29 作成日:2026年5月1日 バージョン:v0.5
-# (Author:dimebag29 Creation date:May 1, 2026 Version:v0.5)
+# 作成者:dimebag29 作成日:2026年6月6日 バージョン:v0.6
+# (Author:dimebag29 Creation date:June 6, 2026 Version:v0.6)
 #
 # このプログラムは大部分をAI (Gemini 3.1 Pro, ChatGPT 5.1)を利用して作成されました。
 # (This program was created largely using AI (Gemini 3.1 Pro, ChatGPT 5.1). )
@@ -116,23 +116,22 @@ CLASS_DATA = [
 ]
 
 # =========================================================
-#  デフォルト設定値 (設定ファイルがない場合に使用)
+#  デフォルト設定値 (先頭に有効フラグ True/False を追加)
 # =========================================================
 DEFAULT_TARGETS = [
-    ["person", "0", "0", "0", "0", "5"],
-    ["bag", "0", "0", "0", "0", "5"],
-    ["car", "0", "0", "0", "0", "5"],
-    ["truck", "0", "0", "0", "0", "5"],
-    ["bus", "0", "0", "0", "0", "5"],
-    ["van", "0", "0", "0", "0", "5"],
-    ["sky", "67", "148", "240", "255", "1"]
+    [True, "person", "0", "0", "0", "0", "5"],
+    [True, "bag", "0", "0", "0", "0", "5"],
+    [True, "car", "0", "0", "0", "0", "5"],
+    [True, "truck", "0", "0", "0", "0", "5"],
+    [True, "bus", "0", "0", "0", "0", "5"],
+    [True, "van", "0", "0", "0", "0", "5"],
+    [True, "sky", "67", "148", "240", "255", "1"]
 ]
 
 # =========================================================
 #  保存フォルダ
 # =========================================================
 def get_appdata_dir():
-    # 実行ファイルまたはスクリプトのあるディレクトリを使用
     path = os.path.dirname(sys.argv[0])
     os.makedirs(path, exist_ok=True)
     return path
@@ -155,7 +154,6 @@ def save_settings(data):
 def load_settings():
     if not os.path.exists(SETTINGS_PATH):
         return None
-
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -185,7 +183,6 @@ class TextRedirector:
 def load_model(inf_short, inf_long):
     print("データセットを読み込んでいます")
 
-    # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
     try:
         TempFileDir = sys._MEIPASS
     except Exception:
@@ -206,7 +203,6 @@ def load_model(inf_short, inf_long):
         model.eval()
 
         if torch.cuda.is_available():
-            # モデル自体をFP16（半精度）でGPUに転送。RTX 20/30/40/50シリーズではこれで大幅にメモリ削減＆高速化
             model.to("cuda", dtype=torch.float16)
             print("CUDAが利用可能。GPUを使用します")
         else:
@@ -243,7 +239,6 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
         # === 推論処理 ===
         try:
             with torch.inference_mode():
-                # CUDAの場合のみautocast(FP16)を有効化、それ以外は何もしない(nullcontext)
                 with torch.autocast(device_type="cuda", dtype=torch.float16) if device.type == "cuda" else nullcontext():
                     outputs = model(**inputs)
         
@@ -251,7 +246,7 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
             if "no kernel image is available" in str(e) or "CUDA" in str(e):
                 print(f"!!! GPUエラー検出: {e}")
                 print("!!! CPUモードに切り替えて再試行します...")
-                model.to("cpu", dtype=torch.float32) # CPUはfloat32に戻す
+                model.to("cpu", dtype=torch.float32)
                 inputs = {k: v.to("cpu") for k, v in inputs.items()}
                 with torch.no_grad():
                     outputs = model(**inputs)
@@ -303,11 +298,9 @@ def apply_segmentation(image_path, processor, model, output_dir, TARGET_COLORS, 
 
         # === 画像生成と保存 ===
         if mask_mode:
-            # マスク画像生成モード: 全体を R,G,B,A=255,255,255,255 で初期化し、対象物を 0,0,0,255 で塗る
             final_np = np.full((H, W, 4), 255, dtype=np.uint8)
             final_np[found_mask] = (0, 0, 0, 255)
         else:
-            # 通常モード: 元画像をベースに色を塗る
             final_np = np.array(original_image, dtype=np.uint8)
             final_np[found_mask] = mask_arr[found_mask]
 
@@ -361,7 +354,6 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
     start = time.time()
 
     for i, f in enumerate(files):
-        # 中断チェック
         if stop_event.is_set():
             print("\n>>> ユーザー操作により処理を中断しました <<<\n")
             break
@@ -375,7 +367,7 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 
     if not stop_event.is_set():
         print("\n■■■■■ 全処理完了!! ■■■■■\n")
-        winsound.PlaySound("Notification.Looping.Alarm4", winsound.SND_ALIAS)   # 終了音を鳴らす
+        winsound.PlaySound("Notification.Looping.Alarm4", winsound.SND_ALIAS)
 
 
 # =========================================================
@@ -384,13 +376,12 @@ def start_processing(input_folder, output_folder, target_colors, inf_short, inf_
 class SegGUI:
     def __init__(self, root):
         self.root = root
-        root.title("SegmentationMaskPainter v0.5")
+        root.title("SegmentationMaskPainter v0.6")
         
-        # 中断制御用のイベント
         self.stop_event = threading.Event()
 
         # ==============================
-        # 入出力フォルダ
+        # フォルダ設定
         # ==============================
         frm_io = ttk.LabelFrame(root, text="フォルダ設定")
         frm_io.pack(fill="x", padx=10, pady=5)
@@ -427,16 +418,13 @@ class SegGUI:
         frm_tbl = ttk.LabelFrame(root, text="マスク設定 (R,G,B,Aは0~255の値を設定してください)")
         frm_tbl.pack(fill="both", padx=10, pady=5, expand=True)
 
-        # 対象物(class)一覧ボタン用フレーム
         frm_btn = tk.Frame(frm_tbl)
         frm_btn.pack(side="top", fill="x", padx=5, pady=2)
         
-        # 対象物(class)一覧ボタン (左側に配置)
         btn_class_list = ttk.Button(frm_btn, text="対象物一覧", command=self.open_class_list)
         btn_class_list.pack(side="left")
 
-        # キャンバスとスクロールバー
-        canvas = tk.Canvas(frm_tbl, height=300)
+        canvas = tk.Canvas(frm_tbl, height=300, highlightthickness=0)
         scrollbar = ttk.Scrollbar(frm_tbl, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
 
@@ -446,17 +434,28 @@ class SegGUI:
         self.table_frame = tk.Frame(canvas)
         canvas.create_window((0, 0), window=self.table_frame, anchor="nw")
 
-        headers = ["対象物", "R (赤)", "G (緑)", "B (青)", "A (透明)", "マスク拡張[px]"]
-        for col, h in enumerate(headers):
-            tk.Label(self.table_frame, text=h, borderwidth=1, relief="solid", width=12).grid(row=0, column=col)
+        # ヘッダーの左端に「有効」を追加
+        headers = ["有効", "対象物", "R (赤)", "G (緑)", "B (青)", "A (透明)", "マスク拡張[px]"]
+        widths = [5, 11, 11, 11, 11, 11, 11]
+        for col, (h, w) in enumerate(zip(headers, widths)):
+            tk.Label(self.table_frame, text=h, borderwidth=1, relief="solid", width=w).grid(row=0, column=col)
 
         self.cells = []
         for r in range(1, 151):
             row_cells = []
-            for c in range(6):
+            
+            # 1列目: 有効/無効のチェックボックス (BooleanVarで状態管理)
+            bool_var = tk.BooleanVar(value=True)
+            chk = ttk.Checkbutton(self.table_frame, variable=bool_var)
+            chk.grid(row=r, column=0)
+            row_cells.append(bool_var) # セル管理には値を保持する変数を格納
+            
+            # 2〜7列目: 各種入力Entry
+            for c in range(1, 7):
                 e = tk.Entry(self.table_frame, width=12)
                 e.grid(row=r, column=c)
                 row_cells.append(e)
+                
             self.cells.append(row_cells)
 
         self.table_frame.update_idletasks()
@@ -471,7 +470,6 @@ class SegGUI:
         self.log_text = tk.Text(frm_log, height=12, state="disabled")
         self.log_text.pack(fill="both", expand=True)
 
-        import sys
         sys.stdout = TextRedirector(self.log_text)
 
         # ==============================
@@ -518,7 +516,6 @@ class SegGUI:
         frm_exec = tk.Frame(root)
         frm_exec.pack(pady=10)
 
-        # 処理開始ボタン
         self.btn_run = ttk.Button(
             frm_exec, 
             text="処理開始 (既にファイルがあったらスキップ)", 
@@ -526,7 +523,6 @@ class SegGUI:
         )
         self.btn_run.pack(side="left", padx=10)
 
-        # 処理中断ボタン
         self.btn_stop = ttk.Button(
             frm_exec, 
             text="処理中断", 
@@ -537,12 +533,11 @@ class SegGUI:
         # ==============================
         # GUIのアイコン設定
         # ==============================
-        # exeに同梱したデータが展開されたパスを取得 https://stackoverflow.com/questions/31836104/pyinstaller-and-onefile-how-to-include-an-image-in-the-exe-file
         try:
             TempFileDir = sys._MEIPASS
         except Exception:
             TempFileDir = os.path.abspath(".")
-        IconPath = os.path.join(TempFileDir, "SegmentationMaskPainterIcon.ico") # Iconのパス
+        IconPath = os.path.join(TempFileDir, "SegmentationMaskPainterIcon.ico")
         
         if os.path.exists(IconPath):
             root.iconbitmap(IconPath)
@@ -558,8 +553,6 @@ class SegGUI:
         if d:
             self.out_var.set(d)
 
-    # ---------------------------------------------------------
-    # 対象物(class)一覧ウィンドウを表示
     # ---------------------------------------------------------
     def open_class_list(self):
         win = tk.Toplevel(self.root)
@@ -609,15 +602,20 @@ class SegGUI:
     # TARGET_COLORS を dict 化
     # ---------------------------------------------------------
     def get_target_colors(self):
-        # バリデーション用にCLASS_DATAの英語名（第2要素）のセットを作成
         valid_class_names = {item[1] for item in CLASS_DATA}
 
         colors = {}
         for r_idx, row in enumerate(self.cells):
-            vals = [e.get().strip() for e in row]
+            is_enabled = row[0].get() # 1列目のチェックボックスの状態を取得
+            vals = [e.get().strip() for e in row[1:]] # 2列目以降(対象物名〜)を取得
+            
             if vals[0] == "":
                 continue
             
+            # チェックボックスにチェックが入っていない場合は、不正チェックもスキップして処理対象に入れない
+            if not is_enabled:
+                continue
+                
             name = vals[0]
             
             if name not in valid_class_names:
@@ -646,6 +644,14 @@ class SegGUI:
     # 設定保存
     # ---------------------------------------------------------
     def save_current_settings(self):
+        table_save_data = []
+        for row in self.cells:
+            row_data = []
+            row_data.append(row[0].get()) # 1列目 (True/False)
+            for e in row[1:]:
+                row_data.append(e.get())  # 2列目以降の文字列
+            table_save_data.append(row_data)
+
         data = {
             "input": self.in_var.get(),
             "output": self.out_var.get(),
@@ -653,9 +659,7 @@ class SegGUI:
             "long": self.long_var.get(),
             "format": self.format_var.get(),
             "mask_mode": self.mask_mode_var.get(),
-            "table": [
-                [e.get() for e in row] for row in self.cells
-            ],
+            "table": table_save_data,
         }
         save_settings(data)
 
@@ -682,17 +686,29 @@ class SegGUI:
         for r, row_vals in enumerate(table_data):
             if r >= len(self.cells):
                 break
-            for c, val in enumerate(row_vals):
-                # 既存のセル内容をクリアしてから挿入
-                self.cells[r][c].delete(0, tk.END)
-                self.cells[r][c].insert(0, val)
+            
+            # ロードデータが有効チェック値(bool)を持っているか確認
+            has_bool = isinstance(row_vals[0], bool)
+            start_col = 1 if has_bool else 0
+            
+            if has_bool:
+                self.cells[r][0].set(row_vals[0])
+            else:
+                self.cells[r][0].set(True) # 古いjson構造（bool無し）の場合はデフォルトTrue
+
+            for c, val in enumerate(row_vals[start_col:]):
+                target_col = c + 1
+                if target_col >= len(self.cells[r]):
+                    break
+                self.cells[r][target_col].delete(0, tk.END)
+                self.cells[r][target_col].insert(0, str(val))
 
     # ---------------------------------------------------------
     # 中断処理
     # ---------------------------------------------------------
     def stop_processing(self):
         if self.stop_event.is_set():
-            return # 既に中断フラグが立っている
+            return
         self.stop_event.set()
         print("\n!!! 現在の処理が完了次第停止します !!!\n")
 
@@ -700,12 +716,10 @@ class SegGUI:
     # RUN
     # ---------------------------------------------------------
     def run(self):
-        # 1. フォルダチェック
         if not self.in_var.get() or not self.out_var.get():
             messagebox.showerror("エラー", "入出力フォルダを指定してください")
             return
 
-        # 2. 解像度入力チェック
         try:
             short_val = self.short_var.get()
             long_val = self.long_var.get()
@@ -717,15 +731,12 @@ class SegGUI:
             messagebox.showerror("エラー", "推論解像度設定の 上限 は 基準 より大きい値にする必要があります。")
             return
 
-        # 3. 設定保存
         self.save_current_settings()
 
-        # 4. テーブルデータの取得とチェック (ここで対象物名(class名)のバリデーションも行われる)
         target_colors = self.get_target_colors()
         if target_colors is None:
             return
 
-        # 中断フラグをクリア
         self.stop_event.clear()
 
         threading.Thread(
